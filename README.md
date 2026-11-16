@@ -21,6 +21,10 @@ H.264 MP4 (Main, level 3.1, yuv420p, 1280×720, +faststart) with a JPG poster. I
 | vid/projects-terrace.mp4 | Projects | page banner | 8.0 s | 1.44 MB | 129 KB |
 | vid/eis-hillside.mp4 | Environmental Impact Statement | page banner | 8.0 s | 1.42 MB | 89 KB |
 | vid/contact-forest.mp4 | Contact | page banner | 8.0 s | 1.42 MB | 129 KB |
+| vid/row-seeding.mp4 | Services §01 + Projects ROW job | section background | 9.0 s | 1.93 MB | (poster in img/) |
+| vid/heavy-lift-river.mp4 | Projects heavy-lift job | in-card loop | 8.0 s | 1.82 MB | (poster in img/) |
+| vid/services-heavy-lift.mp4 | Services §02 | desktop section background | 9.0 s | 0.84 MB | (poster in img/) |
+| vid/services-heavy-lift-m.mp4 | Services §02 | mobile section background | 9.0 s | 1.28 MB | (poster in img/) |
 
 ## Fleet names
 DJI Agras T40 and DJI Agras T70P are listed by their DJI model names. No manufacturer specifications are published on the site.
