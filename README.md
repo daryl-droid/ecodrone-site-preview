@@ -12,7 +12,7 @@ H.264 MP4 (Main, level 3.1, yuv420p, 1280×720, +faststart) with a JPG poster. I
 
 | File | Page | Slot | Length | MP4 | Poster |
 |---|---|---|---|---|---|
-| vid/hero-seeding.mp4 | Home | hero background | 8.0 s | 1.89 MB | 117 KB |
+| vid/hero-seeding.mp4 | Home | hero background | 9.0 s | 1.91 MB | 329 KB |
 | vid/about-ridge.mp4 | About | page banner | 8.0 s | 1.49 MB | 100 KB |
 | vid/services-spreading.mp4 | Services | page banner | 7.0 s | 1.29 MB | 99 KB |
 | vid/services-aerial.mp4 | Services | "From the air" band | 7.5 s | 1.29 MB | 93 KB |
@@ -27,5 +27,4 @@ H.264 MP4 (Main, level 3.1, yuv420p, 1280×720, +faststart) with a JPG poster. I
 | vid/services-heavy-lift-m.mp4 | Services §02 | mobile section background | 9.0 s | 1.28 MB | (poster in img/) |
 
 ## Fleet names
-DJI Agras T40 and DJI Agras T70P are listed by their DJI model names. No manufacturer specifications are published on the site.
-Lift kits are available for the agricultural drones only: EAVision J150/J100 and DJI Agras T40/T70P.
+DJI Agras T40 and DJI Agras T70P are listed by their DJI model names. No manufacturer specifications or lift capacities are published on the site.
