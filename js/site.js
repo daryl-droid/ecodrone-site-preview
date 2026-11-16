@@ -3,41 +3,49 @@
   if(b&&n){b.addEventListener('click',function(){var o=n.classList.toggle('open');b.setAttribute('aria-expanded',o?'true':'false');});}
   var y=document.getElementById('yr'); if(y){y.textContent=new Date().getFullYear();}
 
-  // Background clips — iOS Safari-safe autoplay + a tap-to-play fallback on every clip.
-  // muted/defaultMuted/playsInline are set BEFORE play(). Hidden desktop/mobile
-  // variants are never play()'d (iOS can "spend" autoplay on a display:none video).
-  // If play() rejects (or reduced motion is on), the poster stays and the toggle shows Play.
-  var mq=window.matchMedia?window.matchMedia('(prefers-reduced-motion: reduce)'):null;
-  function reduced(){return !!(mq&&mq.matches);}
+  // iOS-safe autoplay: attributes live in the HTML; JS only mutes/playsInline
+  // before play(), never pauses on a rejected play() (native autoplay may still
+  // start), and never sets preload=none. One <video> per clip; desktop/mobile
+  // src is chosen at parse time (see clip_bg_pair) or here before first play.
+  var reduceMq=window.matchMedia?window.matchMedia('(prefers-reduced-motion: reduce)'):null;
+  function reduced(){return !!(reduceMq&&reduceMq.matches);}
 
-  function isShown(el){
-    while(el&&el!==document.documentElement){
-      var st=window.getComputedStyle(el);
-      if(st.display==='none'||st.visibility==='hidden')return false;
-      el=el.parentElement;
-    }
-    return true;
-  }
+  var LAYOUT_MQ='(max-width:640px)';
 
-  function visibleVideo(root){
-    var vids=root.querySelectorAll('video');
-    var fallback=null;
-    for(var i=0;i<vids.length;i++){
-      var wrap=vids[i].closest('.bg-media')||vids[i];
-      if(isShown(wrap))return vids[i];
-      if(!fallback)fallback=vids[i];
+  function pickSrc(v){
+    if(!v)return;
+    var mobile=window.matchMedia&&window.matchMedia(LAYOUT_MQ).matches;
+    var want=mobile
+      ?(v.getAttribute('data-src-mobile')||v.getAttribute('data-src-desktop')||v.getAttribute('src'))
+      :(v.getAttribute('data-src-desktop')||v.getAttribute('src'));
+    if(!want)return;
+    if(v.getAttribute('src')!==want){
+      v.setAttribute('src',want);
     }
-    return fallback;
+    var poster=mobile
+      ?(v.getAttribute('data-poster-mobile')||v.getAttribute('data-poster-desktop'))
+      :(v.getAttribute('data-poster-desktop')||v.getAttribute('poster'));
+    if(poster){
+      v.setAttribute('poster',poster);
+      var media=v.closest('.bg-media');
+      if(media)media.style.backgroundImage='url('+poster+')';
+    }
   }
 
   function prep(v){
-    // Order matters on iOS: mute and playsinline must be true before play().
+    // Order matters on iOS: muted + playsinline must be true before play().
     v.muted=true;
     v.defaultMuted=true;
     v.setAttribute('muted','');
+    v.autoplay=true;
+    v.setAttribute('autoplay','');
+    v.loop=true;
+    v.setAttribute('loop','');
     v.playsInline=true;
     v.setAttribute('playsinline','');
     v.setAttribute('webkit-playsinline','');
+    v.preload='auto';
+    v.setAttribute('preload','auto');
     v.controls=false;
     v.removeAttribute('controls');
     try{if('disablePictureInPicture' in v)v.disablePictureInPicture=true;}catch(e){}
@@ -62,124 +70,172 @@
     btn.classList.toggle('is-paused',!playing);
   }
 
+  function clipVisible(root,ratio){
+    var r=root.getBoundingClientRect();
+    var vh=window.innerHeight||document.documentElement.clientHeight;
+    var vis=Math.min(r.bottom,vh)-Math.max(r.top,0);
+    if(vis<=0||r.height<=0)return false;
+    return (vis/r.height)>=(ratio||0.25);
+  }
+
   function bindClip(root){
     var btn=root.querySelector('[data-clip-toggle]');
-    if(!btn)return;
+    var v=root.querySelector('video');
+    if(!v)return;
+    pickSrc(v);
+
+    var media=v.closest('.bg-media')||v;
     var retryBound=false;
-
-    function video(){return visibleVideo(root);}
-
-    function reallyPlaying(v){
-      // A rejected play() or MEDIA_ERR_SRC_NOT_SUPPORTED can leave paused=false
-      // on some engines; never treat an errored element as playing (so the
-      // tap-to-play fallback stays in the Play state).
-      return !!(v && !v.paused && !v.error);
-    }
+    root._ecoUserPaused=false;
+    // Assume in view until IntersectionObserver says otherwise — never pause on load.
+    root._ecoInView=true;
 
     function mark(playing){
-      var v=video();
-      var media=v&&(v.closest('.bg-media')||v);
-      if(media)media.classList.toggle('is-playing',!!playing);
+      media.classList.toggle('is-playing',!!playing);
       root.classList.toggle('is-playing',!!playing);
       setToggle(btn,playing);
     }
 
-    function fail(){
-      var v=video();
-      if(v){try{v.pause();}catch(e){}}
-      mark(false);
-    }
-
-    function hushHidden(){
-      var v=video();
-      var all=root.querySelectorAll('video');
-      for(var i=0;i<all.length;i++){
-        if(all[i]===v)continue;
-        try{all[i].pause();}catch(e){}
-        all[i].removeAttribute('autoplay');
-        all[i].preload='none';
-      }
-    }
-
     function start(){
-      var v=video();
-      if(!v)return;
-      hushHidden();
-      prep(v);
       if(reduced()){
         v.removeAttribute('autoplay');
-        try{v.pause();v.currentTime=0;}catch(e){}
+        try{v.pause();}catch(e){}
         mark(false);
         return;
       }
-      v.setAttribute('autoplay','');
-      v.preload='auto';
+      if(root._ecoUserPaused)return;
+      if(document.hidden)return;
+      if(!root._ecoInView)return;
+      prep(v);
       tryPlay(v).then(function(){
-        if(reallyPlaying(v))mark(true); else fail();
+        if(!v.paused&&!v.error)mark(true);
+        // If the promise resolved but the element is somehow paused, leave it —
+        // do not call pause() or flip the toggle; native autoplay may still run.
       }).catch(function(){
-        fail();
+        // Do NOT pause(). A rejected play() on iOS often happens before canplay;
+        // calling pause() here is what killed autoplay in f10c4bf. Retry, and
+        // only flip the toggle to Play if the element is still paused after that.
         if(retryBound)return;
         retryBound=true;
         function retry(){
-          if(reduced())return;
-          if(reallyPlaying(v)&&v.currentTime>0){mark(true);return;}
+          if(reduced()||root._ecoUserPaused||document.hidden||!root._ecoInView)return;
+          if(!v.paused&&!v.error){mark(true);return;}
           tryPlay(v).then(function(){
-            if(reallyPlaying(v))mark(true); else fail();
-          }).catch(fail);
+            if(!v.paused&&!v.error)mark(true);
+          }).catch(function(){
+            if(v.paused)mark(false);
+          });
         }
         v.addEventListener('canplay',retry);
         v.addEventListener('loadeddata',retry);
       });
     }
 
-    btn.addEventListener('click',function(){
-      var v=video();
-      if(!v)return;
+    v.addEventListener('play',function(){if(!v.error)mark(true);});
+    v.addEventListener('playing',function(){if(!v.error)mark(true);});
+    v.addEventListener('pause',function(){
+      // Only reflect a pause in the toggle when it was requested (user, reduced
+      // motion, off-screen, or hidden tab). Spurious pauses must not flip the
+      // control to Play and must not block a later autoplay start.
+      if(v.paused&&(root._ecoUserPaused||reduced()||document.hidden||!root._ecoInView))mark(false);
+    });
+
+    if(btn)btn.addEventListener('click',function(){
       prep(v);
-      if(v.paused || v.error){
+      if(v.paused){
+        root._ecoUserPaused=false;
         tryPlay(v).then(function(){
-          if(reallyPlaying(v))mark(true); else fail();
-        }).catch(fail);
+          if(!v.paused)mark(true); else mark(false);
+        }).catch(function(){mark(false);});
       }else{
+        root._ecoUserPaused=true;
         try{v.pause();}catch(e){}
         mark(false);
       }
     });
 
-    // Keep the button in sync if the element itself plays/pauses.
-    var all=root.querySelectorAll('video');
-    for(var i=0;i<all.length;i++){
-      (function(v){
-        v.addEventListener('play',function(){if(v===video()&&reallyPlaying(v))mark(true);});
-        v.addEventListener('pause',function(){if(v===video()&&v.paused)mark(false);});
-        v.addEventListener('error',function(){if(v===video())fail();});
-      })(all[i]);
+    if('IntersectionObserver' in window){
+      var io=new IntersectionObserver(function(entries){
+        for(var i=0;i<entries.length;i++){
+          root._ecoInView=entries[i].isIntersecting;
+          if(root._ecoInView){
+            if(!root._ecoUserPaused&&!reduced()&&!document.hidden)start();
+          }else{
+            if(!v.paused){try{v.pause();}catch(e){}}
+          }
+        }
+      },{threshold:0.25});
+      io.observe(root);
     }
 
     start();
 
     if(window.matchMedia){
-      var layoutMq=window.matchMedia('(max-width:640px)');
-      var onLayout=function(){retryBound=false;start();};
+      var layoutMq=window.matchMedia(LAYOUT_MQ);
+      var onLayout=function(){
+        var prev=v.getAttribute('src');
+        pickSrc(v);
+        retryBound=false;
+        if(v.getAttribute('src')!==prev){/* new src will fire loadeddata/canplay */}
+        if(!root._ecoUserPaused)start();
+      };
       if(layoutMq.addEventListener)layoutMq.addEventListener('change',onLayout);
       else if(layoutMq.addListener)layoutMq.addListener(onLayout);
     }
+
+    root._ecoStart=start;
   }
 
-  var roots=document.querySelectorAll('.hero, .page-hero.has-clip, .clip-band, .fig.has-clip, .mission.clip-mission');
+  var ROOT_SEL='.hero, .page-hero.has-clip, .clip-band, .fig.has-clip, .mission.clip-mission';
+  var roots=document.querySelectorAll(ROOT_SEL);
   for(var i=0;i<roots.length;i++)bindClip(roots[i]);
 
-  if(mq){
+  // One-time unlock for in-app iOS web views that withhold autoplay until a gesture.
+  function unlock(){
+    if(reduced())return;
+    var list=document.querySelectorAll(ROOT_SEL);
+    for(var i=0;i<list.length;i++){
+      var root=list[i];
+      var v=root.querySelector('video');
+      if(!v||root._ecoUserPaused||document.hidden)continue;
+      if(!clipVisible(root,0.25))continue;
+      root._ecoInView=true;
+      prep(v);
+      var p=v.play();
+      if(p&&p.catch)p.catch(function(){});
+    }
+    for(var j=0;j<GESTURES.length;j++)document.removeEventListener(GESTURES[j],unlock,GESTURE_OPTS);
+  }
+  var GESTURES=['touchstart','touchend','scroll','click'];
+  var GESTURE_OPTS={passive:true,capture:true};
+  for(var g=0;g<GESTURES.length;g++)document.addEventListener(GESTURES[g],unlock,GESTURE_OPTS);
+
+  // Pause only when the tab is actually hidden; resume in-view clips when it returns.
+  document.addEventListener('visibilitychange',function(){
+    var list=document.querySelectorAll(ROOT_SEL);
+    var i,root,v;
+    if(document.hidden){
+      for(i=0;i<list.length;i++){
+        v=list[i].querySelector('video');
+        if(v&&!v.paused){try{v.pause();}catch(e){}}
+      }
+      return;
+    }
+    if(reduced())return;
+    for(i=0;i<list.length;i++){
+      root=list[i];
+      v=root.querySelector('video');
+      if(!v||root._ecoUserPaused)continue;
+      if(typeof root._ecoStart==='function')root._ecoStart();
+    }
+  });
+
+  if(reduceMq){
     var onMotion=function(){
-      var roots2=document.querySelectorAll('.hero, .page-hero.has-clip, .clip-band, .fig.has-clip, .mission.clip-mission');
-      // Re-run start by dispatching a fake path: pause all then the bind already ran;
-      // simply walk again with a new start via click-state.
-      for(var i=0;i<roots2.length;i++){
-        var ev=document.createEvent?null:null;
-        // Rebind is simplest: query button and invoke start through a custom event isn't set up.
-        // Pause or resume according to the new preference.
-        var root=roots2[i];
-        var v=visibleVideo(root);
+      var list=document.querySelectorAll(ROOT_SEL);
+      for(var i=0;i<list.length;i++){
+        var root=list[i];
+        var v=root.querySelector('video');
         var btn=root.querySelector('[data-clip-toggle]');
         if(!v)continue;
         prep(v);
@@ -188,16 +244,13 @@
           try{v.pause();v.currentTime=0;}catch(e){}
           setToggle(btn,false);
           root.classList.remove('is-playing');
-        }else{
-          v.setAttribute('autoplay','');
-          tryPlay(v).then(function(vv,bb,rr){return function(){
-            if(vv.error||vv.paused){setToggle(bb,false);rr.classList.remove('is-playing');return;}
-            rr.classList.add('is-playing');setToggle(bb,true);
-          };}(v,btn,root)).catch(function(bb,rr){return function(){setToggle(bb,false);rr.classList.remove('is-playing');};}(btn,root));
+          if(v.closest('.bg-media'))v.closest('.bg-media').classList.remove('is-playing');
+        }else if(!root._ecoUserPaused){
+          if(typeof root._ecoStart==='function')root._ecoStart();
         }
       }
     };
-    if(mq.addEventListener)mq.addEventListener('change',onMotion);
-    else if(mq.addListener)mq.addListener(onMotion);
+    if(reduceMq.addEventListener)reduceMq.addEventListener('change',onMotion);
+    else if(reduceMq.addListener)reduceMq.addListener(onMotion);
   }
 })();
