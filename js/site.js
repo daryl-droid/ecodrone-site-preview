@@ -140,7 +140,8 @@
       if(v.paused&&(root._ecoUserPaused||reduced()||document.hidden||!root._ecoInView))mark(false);
     });
 
-    if(btn)btn.addEventListener('click',function(){
+    if(btn)btn.addEventListener('click',function(e){
+      if(e){e.preventDefault();e.stopPropagation();}
       prep(v);
       if(v.paused){
         root._ecoUserPaused=false;
