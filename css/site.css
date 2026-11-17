@@ -233,6 +233,12 @@ figcaption{font:500 11.5px/1.45 var(--f-mono);letter-spacing:.03em;color:var(--s
 .clip-band h2{color:#fff;max-width:20ch}
 .clip-band .lead{color:var(--od-soft);max-width:60ch}
 .clip-band .dataline{color:#fff;max-width:60ch;margin-top:18px}
+.clip-band.clip-photo{min-height:max(480px,48vw);display:flex;align-items:flex-end}
+.services-silv{padding-top:40px;padding-bottom:56px}
+.services-silv .shots{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.services-silv .shots-wide{grid-template-columns:1fr 1fr;margin-top:14px}
+@media (max-width:900px){.services-silv .shots,.services-silv .shots-wide{grid-template-columns:1fr 1fr}}
+@media (max-width:520px){.services-silv .shots,.services-silv .shots-wide{grid-template-columns:1fr}}
 .ar-35{aspect-ratio:3/5}
 video::-webkit-media-controls{display:none!important}
 video::-webkit-media-controls-start-playback-button{display:none!important;-webkit-appearance:none}
