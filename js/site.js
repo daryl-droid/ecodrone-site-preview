@@ -4,18 +4,18 @@
   var y=document.getElementById('yr'); if(y){y.textContent=new Date().getFullYear();}
 
   // iOS-safe autoplay: muted/autoplay/loop/playsinline stay literal in the HTML.
-  // JS never pauses on a rejected play() (native autoplay may still start) and
-  // never disables preload entirely. One <video> per clip. Pause icon only when the
-  // element is actually playing and currentTime is advancing.
+  // JS never pauses on a rejected play() (native autoplay may still start).
+  // One <video> per clip. Pause icon only when currentTime is advancing.
+  // Off-screen clips are paused; there is no simultaneous-play cap.
   var reduceMq=window.matchMedia?window.matchMedia('(prefers-reduced-motion: reduce)'):null;
   function reduced(){return !!(reduceMq&&reduceMq.matches);}
 
   var LAYOUT_MQ='(max-width:640px)';
-  var ROOT_SEL='.hero, .page-hero.has-clip, .clip-band, .fig.has-clip, .mission.clip-mission';
-  var PLAY_CAP=3;
-  var NEAR_PX=200;
+  var ROOT_SEL='.hero, .page-hero.has-clip, .clip-band:not(.clip-photo), .fig.has-clip, .mission.clip-mission';
+  var NEAR_PX=400;
   var STALL_MS=2000;
   var POLL_MS=500;
+  var VIEW_RATIO=0.15;
 
   function pickSrc(v){
     if(!v)return;
@@ -39,7 +39,6 @@
 
   function prep(v){
     // Order matters on iOS: muted + playsinline must be true before play().
-    // Do not force preload=auto here — only the near-view path may upgrade it.
     v.muted=true;
     v.defaultMuted=true;
     v.setAttribute('muted','');
@@ -60,6 +59,19 @@
     if(v.preload===mode&&v.getAttribute('preload')===mode)return;
     v.preload=mode;
     v.setAttribute('preload',mode);
+  }
+
+  function ensureData(v){
+    // Some iOS versions will not start fetching media bytes after a preload
+    // upgrade unless load() is called. Call it at most once per src so a
+    // scroll nudge does not reset a playing clip.
+    if(!v)return;
+    setPreload(v,'auto');
+    if(v.readyState>=2)return;
+    var src=v.getAttribute('src')||'';
+    if(v._ecoKick===src)return;
+    v._ecoKick=src;
+    try{v.load();}catch(e){}
   }
 
   function tryPlay(v){
@@ -86,7 +98,7 @@
     var vh=window.innerHeight||document.documentElement.clientHeight;
     var vis=Math.min(r.bottom,vh)-Math.max(r.top,0);
     if(vis<=0||r.height<=0)return false;
-    return (vis/r.height)>=(ratio||0.25);
+    return (vis/r.height)>=(ratio||VIEW_RATIO);
   }
 
   function clipNear(root,px){
@@ -98,42 +110,8 @@
   }
 
   function isHero(root){
-    return !!(root&&root.classList&&root.classList.contains('hero'));
-  }
-
-  function viewScore(root){
-    var r=root.getBoundingClientRect();
-    var vh=window.innerHeight||document.documentElement.clientHeight;
-    var vis=Math.min(r.bottom,vh)-Math.max(r.top,0);
-    if(vis<=0||r.height<=0)return -1e9;
-    var mid=(r.top+r.bottom)/2;
-    return (vis/r.height)*1000 - Math.abs(mid-vh/2);
-  }
-
-  var roots;
-  function playingRoots(except){
-    var out=[],i,v;
-    if(!roots)return out;
-    for(i=0;i<roots.length;i++){
-      if(except&&roots[i]===except)continue;
-      v=roots[i].querySelector('video');
-      if(v&&!v.paused&&!v.ended)out.push(roots[i]);
-    }
-    return out;
-  }
-
-  function evictFor(root){
-    var others=playingRoots(root);
-    others.sort(function(a,b){return viewScore(a)-viewScore(b);});
-    while(others.length>=PLAY_CAP){
-      var evict=others.shift();
-      var ev=evict.querySelector('video');
-      if(ev&&!ev.paused){try{ev.pause();}catch(e){}}
-      var media=ev&&ev.closest?ev.closest('.bg-media'):null;
-      if(media)media.classList.remove('is-playing');
-      evict.classList.remove('is-playing');
-      setToggle(evict.querySelector('[data-clip-toggle]'),false);
-    }
+    if(!root||!root.classList)return false;
+    return root.classList.contains('hero')||root.classList.contains('page-hero');
   }
 
   function bindClip(root){
@@ -145,7 +123,7 @@
     var media=v.closest('.bg-media')||v;
     var retryBound=false;
     root._ecoUserPaused=false;
-    root._ecoInView=clipVisible(root,0.25);
+    root._ecoInView=clipVisible(root,VIEW_RATIO);
     root._ecoLastT=-1;
     root._ecoLastAdvance=0;
     root._ecoStallReloaded=false;
@@ -169,32 +147,28 @@
       if(root._ecoUserPaused)return;
       if(document.hidden)return;
       if(!root._ecoInView&&!isHero(root))return;
-      setPreload(v,'auto');
-      evictFor(root);
       prep(v);
+      ensureData(v);
       tryPlay(v).then(function(){
         // Do not mark Pause here. Wait for 'playing' or advancing currentTime.
       }).catch(function(){
-        // Do NOT pause(). A rejected play() on iOS often happens before canplay;
-        // calling pause() here is what killed autoplay in f10c4bf. Retry, and
-        // only flip the toggle to Play if the element is still paused after that.
+        // Do NOT pause(). A rejected play() on iOS often happens before canplay,
+        // or because this clip was not in view at load. Retry when data arrives
+        // and again on the next touchend/scroll (see nudge).
         if(retryBound)return;
         retryBound=true;
         function retry(){
           if(reduced()||root._ecoUserPaused||document.hidden||!root._ecoInView)return;
           if(!v.paused&&!v.error)return;
-          evictFor(root);
-          tryPlay(v).then(function(){}).catch(function(){
-            if(v.paused)mark(false);
-          });
+          prep(v);
+          tryPlay(v).then(function(){}).catch(function(){});
         }
         v.addEventListener('canplay',retry);
         v.addEventListener('loadeddata',retry);
+        v.addEventListener('canplaythrough',retry);
       });
     }
 
-    // Pause icon only once playback is actually rendering, not on the 'play' event
-    // (which can fire before frames advance, or while the decoder is stalled).
     v.addEventListener('playing',function(){
       if(v.error||root._ecoUserPaused||reduced()||document.hidden)return;
       if(!root._ecoInView&&!isHero(root))return;
@@ -243,7 +217,6 @@
         root._ecoLastAdvance=Date.now();
         try{v.load();}catch(e){}
         setPreload(v,'auto');
-        evictFor(root);
         prep(v);
         var p=v.play();
         if(p&&p.catch)p.catch(function(){});
@@ -264,7 +237,6 @@
         root._ecoLastAdvance=0;
         root._ecoInView=true;
         setPreload(v,'auto');
-        evictFor(root);
         tryPlay(v).then(function(){
           // mark on 'playing' / watchdog
         }).catch(function(){mark(false);});
@@ -279,7 +251,7 @@
       var nearIO=new IntersectionObserver(function(entries){
         for(var i=0;i<entries.length;i++){
           if(entries[i].isIntersecting){
-            setPreload(v,'auto');
+            ensureData(v);
           }else if(v.paused&&!isHero(root)){
             setPreload(v,'metadata');
           }
@@ -297,7 +269,7 @@
             mark(false);
           }
         }
-      },{threshold:0.25});
+      },{threshold:[0,VIEW_RATIO,0.25]});
       io.observe(root);
     }
 
@@ -319,7 +291,7 @@
     root._ecoStart=start;
   }
 
-  roots=document.querySelectorAll(ROOT_SEL);
+  var roots=document.querySelectorAll(ROOT_SEL);
   for(var i=0;i<roots.length;i++)bindClip(roots[i]);
 
   setInterval(function(){
@@ -328,29 +300,68 @@
     }
   },POLL_MS);
 
-  // One-time unlock for in-app iOS web views that withhold autoplay until a gesture.
-  function unlock(){
+  // Keep retrying in-view clips on scroll and touch. iOS often rejects the
+  // IntersectionObserver play() for any clip that was below the fold at load,
+  // and a one-time unlock only helps whatever is on screen at that moment.
+  function nudge(){
     if(reduced())return;
     var list=document.querySelectorAll(ROOT_SEL);
     for(var i=0;i<list.length;i++){
       var root=list[i];
       var v=root.querySelector('video');
       if(!v||root._ecoUserPaused||document.hidden)continue;
-      if(!clipVisible(root,0.25))continue;
+      if(!clipVisible(root,VIEW_RATIO)&&!isHero(root))continue;
       root._ecoInView=true;
       setPreload(v,'auto');
-      evictFor(root);
       prep(v);
-      var p=v.play();
-      if(p&&p.catch)p.catch(function(){});
+      if(typeof root._ecoStart==='function')root._ecoStart();
+      else{
+        var p=v.play();
+        if(p&&p.catch)p.catch(function(){});
+      }
     }
-    for(var j=0;j<GESTURES.length;j++)document.removeEventListener(GESTURES[j],unlock,GESTURE_OPTS);
   }
-  var GESTURES=['touchstart','touchend','scroll','click'];
-  var GESTURE_OPTS={passive:true,capture:true};
-  for(var g=0;g<GESTURES.length;g++)document.addEventListener(GESTURES[g],unlock,GESTURE_OPTS);
 
-  // Pause only when the tab is actually hidden; resume in-view clips when it returns.
+  // First gesture: also arm off-screen clips (play, then pause if still off
+  // screen) so a later muted play() is allowed without another tap.
+  var armed=false;
+  function armAll(ev){
+    nudge();
+    if(armed)return;
+    armed=true;
+    if(reduced())return;
+    var list=document.querySelectorAll(ROOT_SEL);
+    for(var i=0;i<list.length;i++){
+      var root=list[i];
+      var v=root.querySelector('video');
+      if(!v||root._ecoUserPaused)continue;
+      prep(v);
+      setPreload(v,'auto');
+      (function(root,v){
+        var p=tryPlay(v);
+        p.then(function(){
+          if(root._ecoUserPaused||reduced()||document.hidden)return;
+          if(clipVisible(root,VIEW_RATIO)||isHero(root)){
+            root._ecoInView=true;
+            return;
+          }
+          try{v.pause();}catch(e){}
+        }).catch(function(){});
+      })(root,v);
+    }
+  }
+
+  var GESTURES=['touchstart','touchend','scroll','click','pointerdown'];
+  var GESTURE_OPTS={passive:true,capture:true};
+  // armAll on real pointers; nudge also on scroll (momentum may bring a clip
+  // into view after the finger has lifted).
+  document.addEventListener('touchstart',armAll,GESTURE_OPTS);
+  document.addEventListener('touchend',armAll,GESTURE_OPTS);
+  document.addEventListener('pointerdown',armAll,GESTURE_OPTS);
+  document.addEventListener('click',armAll,GESTURE_OPTS);
+  document.addEventListener('scroll',nudge,GESTURE_OPTS);
+  window.addEventListener('scroll',nudge,GESTURE_OPTS);
+
   document.addEventListener('visibilitychange',function(){
     var list=document.querySelectorAll(ROOT_SEL);
     var i,root,v;
