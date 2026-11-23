@@ -3,7 +3,7 @@
 Serve locally:  python3 -m http.server 8080  →  http://localhost:8080/
 Every page carries <meta name="robots" content="noindex,nofollow">; robots.txt disallows all.
 
-`seed-coating.html` is a Coming soon service page for seed pelleting and coating (Engineered soil contact). Imagery: `img/seeding-06.jpg` (hero), `img/pelleted-seed.png` (pelleted-seed still reused from the live WWD ecology section; original filename eav-scel), and `img/burn-slope-01.jpg`.
+`seed-coating.html` is a Coming soon service page for seed pelleting and coating (Engineered soil contact). Imagery: `img/seeding-06.jpg` (hero); `vid/pelleted-seed.mp4` and `vid/pelleted-seed.jpg` (opening hand-in-seed shot from the WWD BC spreading film); the WWD materials lineup stills `img/eav-sdz.png`, `img/eav-fhf.png`, `img/eav-ycz.png`, and `img/pelleted-seed.png` (coated seed; original filename eav-scel); and `img/burn-slope-01.jpg`. The materials lineup is also on Services #08.
 
 ## Design
 Slate/charcoal + fresh green (css/site.css). Text over video sits on a dark overlay sized per clip so it meets WCAG AA.
