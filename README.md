@@ -3,6 +3,8 @@
 Serve locally:  python3 -m http.server 8080  →  http://localhost:8080/
 Every page carries <meta name="robots" content="noindex,nofollow">; robots.txt disallows all.
 
+`seed-coating.html` is a Coming soon service page for seed pelleting and seed coating. It reuses existing on-site stills (`img/seeding-06.jpg` hero, `img/seeding-10.jpg`, `img/burn-slope-01.jpg`). No new media.
+
 ## Design
 Slate/charcoal + fresh green (css/site.css). Text over video sits on a dark overlay sized per clip so it meets WCAG AA.
 
