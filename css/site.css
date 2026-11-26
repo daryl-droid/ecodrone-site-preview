@@ -3,7 +3,7 @@
   --ink:#1e2327; --ink-2:#2c3338; --slate:#4a535a; --mist:#e6e9e7; --paper:#f4f5f3;
   --blue:#21703a; --seed:#5cbf5a; --seed-2:#7fd47c; --line:rgba(30,35,39,.14);
   --link:#21703a; --accent:#5cbf5a; --accent-2:#7fd47c; --accent-ink:#121618; --accent-text:#24702e; --accent-text-dark:#8bdc87;
-  --hdr:rgba(30,35,39,.95); --ink-rgb:30,35,39; --ftr:#14181b; --banner-bg:#5cbf5a; --banner-fg:#121618; --nav-fg:#d5dadd;
+  --hdr:rgba(30,35,39,.95); --ink-rgb:30,35,39; --ftr:#14181b; --nav-fg:#d5dadd;
   --od:#e7eaec; --od-soft:#c9cfd3; --od-muted:#a3acb2; --od-faint:#8f989e; --ph-d1:#2c3338; --ph-d2:#272d31; --ph-dbd:#5f6a71;
   
   --maxw:1200px; --r:4px;
@@ -200,8 +200,6 @@ figcaption{font:500 11.5px/1.45 var(--f-mono);letter-spacing:.03em;color:var(--s
 .ftr img{height:34px;width:auto;margin-bottom:16px}
 @media (max-width:900px){.ftr .cols{grid-template-columns:1fr 1fr}}
 @media (max-width:520px){.ftr .cols{grid-template-columns:1fr}}
-
-.preview-flag{background:var(--banner-bg);color:var(--banner-fg);text-align:center;font:600 12px/1.4 var(--f-mono);letter-spacing:.06em;padding:6px 12px}
 
 /* --- Background clips (muted, looping, decorative; poster is the silent fallback) --- */
 .bg-media{position:absolute;inset:0;background-size:cover;background-position:center;z-index:0}
