@@ -13,7 +13,7 @@
   var LAYOUT_MQ='(max-width:640px)';
   var ROOT_SEL='.hero, .page-hero.has-clip, .clip-band:not(.clip-photo), .fig.has-clip, .mission.clip-mission';
   var NEAR_PX=400;
-  var STALL_MS=2000;
+  var IOS_RELOAD_MS=8000;
   var POLL_MS=500;
   var VIEW_RATIO=0.15;
 
@@ -61,13 +61,32 @@
     v.setAttribute('preload',mode);
   }
 
+  function isIOS(){
+    var ua=navigator.userAgent||'';
+    if(/iP(hone|od|ad)/.test(ua))return true;
+    // iPadOS 13+ reports as Macintosh
+    return navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1;
+  }
+
+  function alreadyFetching(v){
+    if(!v)return false;
+    if(v.readyState>=2)return true;
+    if(v.networkState===2)return true; // NETWORK_LOADING
+    try{if(v.buffered&&v.buffered.length>0)return true;}catch(e){}
+    return false;
+  }
+
   function ensureData(v){
-    // Some iOS versions will not start fetching media bytes after a preload
-    // upgrade unless load() is called. Call it at most once per src so a
-    // scroll nudge does not reset a playing clip.
+    // Upgrade preload so bytes start arriving. Do not call load() on
+    // Chromium (including Android Chrome): load() resets the element,
+    // aborts an in-flight play() / native autoplay, and looks like the
+    // clip never started. iOS can need one load() after a preload
+    // upgrade if it is still at HAVE_NOTHING and not already fetching.
     if(!v)return;
     setPreload(v,'auto');
-    if(v.readyState>=2)return;
+    if(alreadyFetching(v))return;
+    if(!v.paused&&!v.ended)return;
+    if(!isIOS())return;
     var src=v.getAttribute('src')||'';
     if(v._ecoKick===src)return;
     v._ecoKick=src;
@@ -128,7 +147,9 @@
     root._ecoLastAdvance=0;
     root._ecoStallReloaded=false;
 
-    if(isHero(root)||clipNear(root,NEAR_PX))setPreload(v,'auto');
+    // Only the hero / in-view clip gets preload=auto. Preloading every
+    // nearby clip starves the hero on a slow phone network.
+    if(isHero(root)||root._ecoInView)setPreload(v,'auto');
     else setPreload(v,'metadata');
 
     function mark(playing){
@@ -206,25 +227,30 @@
         if(!v.paused)mark(true);
         return;
       }
-      if(v.paused)return;
       if(!root._ecoLastAdvance){
         root._ecoLastAdvance=Date.now();
-        return;
       }
       var stuck=Date.now()-root._ecoLastAdvance;
-      if(stuck>=STALL_MS&&!root._ecoStallReloaded){
+      // In-view clip should be playing. Retry muted play() without load():
+      // load() aborts play() and resets the buffer on Chromium, and a
+      // 2s give-up-and-pause is what leaves a poster and a Play button
+      // on a slow Android network. Keep retrying so a late buffer can
+      // still start. iOS only: one late load() if it never leaves
+      // HAVE_NOTHING after a longer stall.
+      if(v.paused){
+        setPreload(v,'auto');
+        prep(v);
+        var p=v.play();
+        if(p&&p.catch)p.catch(function(){});
+      }
+      if(isIOS()&&stuck>=IOS_RELOAD_MS&&!root._ecoStallReloaded&&v.readyState<2){
         root._ecoStallReloaded=true;
         root._ecoLastAdvance=Date.now();
         try{v.load();}catch(e){}
         setPreload(v,'auto');
         prep(v);
-        var p=v.play();
-        if(p&&p.catch)p.catch(function(){});
-        return;
-      }
-      if(stuck>=STALL_MS&&root._ecoStallReloaded){
-        try{v.pause();}catch(e){}
-        mark(false);
+        var p2=v.play();
+        if(p2&&p2.catch)p2.catch(function(){});
       }
     };
 
@@ -251,7 +277,10 @@
       var nearIO=new IntersectionObserver(function(entries){
         for(var i=0;i<entries.length;i++){
           if(entries[i].isIntersecting){
-            ensureData(v);
+            // iOS may need a preload kick before the clip is on screen.
+            // On Android/Chromium, leave nearby clips at metadata so they
+            // do not compete with the in-view hero for bandwidth.
+            if(isIOS())ensureData(v);
           }else if(v.paused&&!isHero(root)){
             setPreload(v,'metadata');
           }
